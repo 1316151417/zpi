@@ -41,12 +41,14 @@ export async function runAccountCommand(
   command: "auth" | "models",
   args: string[],
   signal = new AbortController().signal,
+  write: (text: string, warning?: boolean) => void = (text, warning) =>
+    (warning ? process.stderr : process.stdout).write(text),
 ) {
   signal.throwIfAborted();
   if (command === "models") {
     if (args.length === 2 && args[0] === "--default") {
       accounts.setDefault(args[1]);
-      process.stdout.write(`默认模型 ${args[1]}\n`);
+      write(`默认模型 ${args[1]}\n`);
       return;
     }
     if (args.length > 1 || args[0]?.startsWith("-"))
@@ -54,7 +56,7 @@ export async function runAccountCommand(
     const models = accounts
       .availableModels()
       .filter((model) => !args.length || model.id.toLowerCase().includes(args[0].toLowerCase()));
-    process.stdout.write(
+    write(
       models.length
         ? models.map((m) => `${m.id}\n`).join("")
         : args.length
@@ -66,7 +68,7 @@ export async function runAccountCommand(
   const [verb = "login", ...rest] = args;
   if (verb === "list" && !rest.length) {
     const state = accounts.snapshot;
-    process.stdout.write(
+    write(
       state.accounts.length
         ? state.accounts
             .map(
@@ -80,18 +82,22 @@ export async function runAccountCommand(
   }
   if (verb === "switch" && rest.length === 2) {
     accounts.switchAccount(rest[0], rest[1]);
-    process.stdout.write(`当前账户 ${rest[0]} ${rest[1]}\n`);
+    write(`当前账户 ${rest[0]} ${rest[1]}\n`);
     return;
   }
   try {
-    if (verb === "login") return await loginCommand(accounts, rest, signal);
+    if (verb === "login") {
+      const account = await loginCommand(accounts, rest, signal);
+      write(`已连接 ${account.provider}，已启用 ${account.models.length} 个模型。\n`);
+      return;
+    }
     if (verb !== "logout" || rest.length)
       throw new UsageError(
         "用法：zpi auth [login [provider] [--method oauth|key] | list | switch <provider> <account> | logout]",
       );
     const state = accounts.snapshot;
     if (!state.accounts.length) {
-      process.stdout.write("尚无连接。\n");
+      write("尚无连接。\n");
       return;
     }
     requireTerminal();
@@ -108,15 +114,15 @@ export async function runAccountCommand(
       terminal,
     );
     const warning = await accounts.logout(id);
-    process.stdout.write("已移除所选 CLI 连接。\n");
-    if (warning) process.stderr.write(`${warning}\n`);
+    write("已移除所选 CLI 连接。\n");
+    if (warning) write(`${warning}\n`, true);
     const account = state.accounts.find((a) => a.id === id);
     if (
       account &&
       state.active[account.provider] === id &&
       state.accounts.some((a) => a.provider === account.provider && a.id !== id)
     )
-      process.stdout.write(`请用 zpi auth switch ${account.provider} <账户名> 选择当前账户。\n`);
+      write(`请用 zpi auth switch ${account.provider} <账户名> 选择当前账户。\n`);
   } catch (error) {
     if (
       signal.aborted ||

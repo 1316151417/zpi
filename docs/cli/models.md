@@ -23,9 +23,11 @@ zpi -m team/coder -p "说明当前目录的用途"
 | OpenAI · ChatGPT 订阅 | `openai --method oauth` 打开浏览器，同意 CLI 的订阅授权 | 从该账号发现可用模型。订阅仅用账号实际列出且标为 `listed` 的模型。预设补充的 `unverified` 条目不能证明账号有权限。 |
 | OpenAI · API | `openai --method key` 输入 API key | 通过 OpenAI API 账户和 zpi 的 `openai-api` 预设发现模型。它与订阅是两个独立账户，可以同时保存。 |
 | Anthropic、DeepSeek 等 API 服务 | 选内置服务名，隐藏输入 key，或显式指定由哪个环境变量提供 key | CLI 的 `anthropic` 入口直接走已有 Anthropic Messages 适配和官方地址。DeepSeek、智谱、MiniMax、MiMo 等复用 zpi 自带的预设、地址和模型元数据。 |
-| 公司网关或本地服务 | 选“自定义”，输入短服务名、协议、Base URL 和密钥来源 | 从服务自动发现多个模型。服务没有模型目录时，可填写多个模型 ID 及上下文、输出上限等必要能力。例如 `team/coder` 和 `team/writer` 可以属于同一条连接。 |
+| 公司网关或本地服务 | 选“自定义”，输入短服务名、协议、Base URL 和密钥来源 | 从服务自动发现多个模型。缺少目录时，为每项填写 ID、上下文上限和输出上限，按空格勾选该模型接受的推理档位。例如 `team/coder` 和 `team/writer` 可以属于同一条连接。 |
 
 自定义服务支持 **OpenAI Chat Completions、OpenAI Responses 和 Anthropic Messages**，分别对应 `openai-completions`、`openai-responses`、`anthropic-messages`。一个服务名绑定一个地址和协议，同一网关提供两种协议时可保存为两个服务名。支持无认证的 OpenAI 兼容本地服务可显式选择“无密钥”。绑定了环境变量但变量缺失时提示补齐。仅仅在 shell 里设置一个 key 不会自动新增服务。[协议](../../packages/ai/src/types.ts) · [公共预设](../../packages/ai/src/providers/registry.ts) · [模型发现](../../packages/ai/src/providers/discovery.ts) · [原生 OpenAI 兼容请求](../../packages/ai/src/api/openai-completions.ts) · [既有 Anthropic 接入](../../packages/agent-sdk/src/runtime.ts)
+
+手填模型的推理档位可留空，此时 `/effort` 只提供 `off`。例如网关为 `coder` 声明 `medium` 和 `high`，在向导里勾选这两项后即可使用 `zpi -m team/coder --effort high`。重新连接同协议的服务时，向导按模型 ID 回填设置。若网关的目录只返回陌生的模型 ID，CLI 沿用内核发现的保守能力。推理强度决定请求参数，Ctrl+T 只改变已有可见推理的显示。
 
 ## 订阅与 API 共存
 
@@ -39,7 +41,7 @@ Codex 的 `model_provider` 和 `model` 用于选择服务和模型，服务可�
 
 ## 选模、默认值与恢复
 
-在交互内输入 `/model` 或按 Ctrl+L 打开可搜索的模型列表。`/model team/coder` 和唯一的完整模型 ID 会直接切换，关键词及歧义 ID 会打开预填搜索词的列表。Enter 选择本次模型，Ctrl+S 同时设为默认。Ctrl+P 和 Ctrl+Shift+P 在可用模型间前后切换。命令行使用 `-m` 或 `--model provider/model`。登录、默认值与临时选择的交互参照 [Pi 模型说明](https://github.com/1316151417/pi/blob/e65b3b88c08412bb8ffbd21fb5dc5756064a6e5a/packages/coding-agent/docs/models.md)。
+在交互内输入 `/model` 或按 Ctrl+L 打开可搜索的模型列表。`/model team/coder` 和唯一的完整模型 ID 会直接切换，关键词及歧义 ID 会打开预填搜索词的列表。Enter 选择本次模型，Ctrl+S 同时设为默认。Ctrl+P 和 Ctrl+Shift+P 在可用模型间前后切换。命令行使用 `-m` 或 `--model provider/model`。登录、默认值与临时选择的交互参照 [Pi 模型说明](https://github.com/earendil-works/pi/blob/2126569de40d5595dd3f41f7af126001f04c1de0/packages/coding-agent/docs/models.md)。
 
 - `zpi models` 列出各服务当前账户启用的模型，`-m` 与 `--model` 是同一参数。服务名在 CLI 内唯一，按第一个斜杠拆分 `服务名/模型ID`，保留模型 ID 内的斜杠。使用未知名称时报错并提示查看 `zpi models`。
 - 第一次成功启用一项模型即设为新会话默认，一次发现多项时先使用目录中的第一项。在 `/model` 中按 Ctrl+S，或用 `zpi models --default <服务名>/<模型ID>`，可更改以后新会话的默认值。新会话依次使用显式 `-m`、CLI 默认模型，在目标服务当前账户内解析。新增服务、恢复桌面或切换目录都不会覆盖 CLI 的默认值。

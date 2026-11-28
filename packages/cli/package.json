@@ -21,10 +21,11 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.124.0",
-    "@earendil-works/pi-tui": "1.6.1",
+    "@earendil-works/pi-tui": "1.7.0",
     "@inquirer/prompts": "8.8.1",
     "@napi-rs/keyring": "2.1.2",
     "bmp-js": "0.1.0",
+    "cli-highlight": "2.1.11",
     "diff": "9.0.0",
     "https-proxy-agent": "7.0.6",
     "jose": "6.2.12",
@@ -36,6 +37,7 @@
     "yaml": "2.9.1"
   },
   "devDependencies": {
+    "@xterm/xterm": "5.5.0",
     "@zpi-dev/agent": "0.1.65",
     "@zpi-dev/ai": "0.1.65",
     "@zpi-dev/builtin-plugins": "0.1.65",

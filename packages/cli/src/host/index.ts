@@ -14,11 +14,13 @@ import {
   runSessionInput,
   type SessionEntry,
   SessionManager,
+  SettingsManager,
   supportedThinkingLevels,
 } from "@zpi-dev/coding-agent";
+import { HistoryPerformance } from "../../../desktop/src/main/history-performance.ts";
 import { withFastMode } from "../../../desktop/src/shared/fast-mode.ts";
 import type { ModelBinding } from "../accounts/index.ts";
-import { commands } from "./commands.ts";
+import { commands, commandUsage, sessionNameProblem } from "./commands.ts";
 import { DirectoryHistory, displayMessages, originalInputEntry } from "./history.ts";
 import { CliResources, fileContext } from "./resources.ts";
 
@@ -32,7 +34,11 @@ interface HostOptions {
   cwd: string;
   root: string;
   homeDir?: string;
-  accounts: { selectModel(explicit?: string, previous?: Binding): Promise<Selection> | Selection };
+  helpFile?: string;
+  accounts: {
+    selectModel(explicit?: string, previous?: Binding): Promise<Selection> | Selection;
+    getEfforts(explicit?: string): Promise<ThinkingLevel[]> | ThinkingLevel[];
+  };
   model?: string;
   effort?: string;
   ephemeral?: boolean;
@@ -41,7 +47,6 @@ interface HostOptions {
 interface RunOptions {
   signal?: AbortSignal;
   onEvent?: (event: AgentSessionEvent) => void;
-  skill?: string;
   filePaths?: string[];
   clipboardImages?: Uint8Array[];
   literal?: boolean;
@@ -101,6 +106,7 @@ function validateEffort(model: Model, value?: string): ThinkingLevel | undefined
 function validateEffort(model: Model, value?: string): ThinkingLevel | undefined {
   if (value === undefined) return;
   const levels = supportedThinkingLevels(model);
+  if (!levels.length) throw new Error("当前模型没有可选推理档位");
   const choice = levels.find((level) => level === value);
   if (!choice) throw new Error(`此模型支持的推理档位为 ${levels.join(", ")}`);
   return choice;
@@ -122,7 +128,7 @@ export class CliHost {
   private readonly history: DirectoryHistory;
   private readonly resources: CliResources;
   private active?: ActiveSession;
-  private draft: { model?: string; effort?: string; displayModel?: string; speed?: Binding };
+  private draft: { name?: string; model?: string; effort?: string; displayModel?: string; speed?: Binding };
   private pending?: Promise<string>;
   private controller?: AbortController;
 
@@ -138,11 +144,17 @@ export class CliHost {
   listHistory() {
     return this.history.list();
   }
-  listSkills() {
-    return this.resources.listSkills();
+  listCommands({ includeSkills = true } = {}) {
+    return this.resources.listCommands({
+      print: this.options.print ?? this.options.ephemeral,
+      includeSkills,
+    });
   }
-  listCommands() {
-    return this.resources.listCommands(Boolean(this.options.print ?? this.options.ephemeral));
+  readSettings() {
+    return SettingsManager.create(this.cwd, this.history.directory);
+  }
+  getPerformance() {
+    return this.active?.session.modelPerformance;
   }
   getContext() {
     return this.active?.session.getContextUsage();
@@ -150,11 +162,17 @@ export class CliHost {
   getMessages() {
     return this.active ? Array.from(displayMessages(this.active.manager.iterateEntries())) : [];
   }
+  getSessionName() {
+    return this.active?.session.sessionName ?? this.draft.name;
+  }
   async rename(name: string) {
     this.checkIdle();
-    if (!this.active) throw new Error("先发送一条消息，再给会话命名。");
-    if (!name.trim() || /[\p{C}]/u.test(name) || name.length > 100)
-      throw new Error("请用 /rename 名称，输入 1 至 100 个字符的单行名称。");
+    const problem = sessionNameProblem(name);
+    if (problem) throw new Error(problem);
+    if (!this.active) {
+      this.draft.name = name;
+      return;
+    }
     this.active.session.setSessionName(name);
     await this.active.manager.flushAsync();
   }
@@ -177,6 +195,7 @@ export class CliHost {
         ? modelName(this.active.selection.binding)
         : (this.draft.displayModel ?? this.draft.model),
       effort: this.active?.session.thinkingLevel ?? this.draft.effort,
+      subscription: this.active ? this.active.selection.model.auth === "chatgpt" : undefined,
       fast: this.active ? tier === "priority" || tier === "fast" : this.draft.speed?.fast === true,
     };
   }
@@ -195,12 +214,15 @@ export class CliHost {
       : selection;
   }
 
-  async toggleFast() {
+  async toggleFast(requested?: boolean) {
     this.checkIdle();
     const selection = this.active?.selection ?? (await this.selectDraft());
     const tier = fastServiceTier(selection.model);
     if (!tier) throw new Error("当前模型未提供加速档位。");
-    const next = withSpeed(selection, selection.model.samplingParams?.service_tier !== tier);
+    const current = selection.model.samplingParams?.service_tier === tier;
+    const enabled = requested ?? !current;
+    if (current === enabled && selection.binding.fast === enabled) return enabled;
+    const next = withSpeed(selection, enabled);
     if (this.active) {
       await this.persistBinding(this.active.manager, next);
       await this.active.session.setModel(next.model);
@@ -209,10 +231,13 @@ export class CliHost {
       this.draft.speed = next.binding;
       this.draft.displayModel = modelName(next.binding);
     }
+    return enabled;
   }
 
   async getEfforts() {
-    return supportedThinkingLevels((this.active?.selection ?? (await this.selectDraft())).model);
+    return this.active
+      ? supportedThinkingLevels(this.active.selection.model)
+      : this.options.accounts.getEfforts(this.draft.model);
   }
 
   async setEffort(level: string) {
@@ -263,12 +288,20 @@ export class CliHost {
   ) {
     const { model, runtime } = selection;
     await this.persistBinding(manager, selection);
+    const performance = new HistoryPerformance();
+    for (const entry of manager.iterateEntries()) performance.add(entry);
     return (
       await createAgentSession({
         cwd: this.cwd,
+        customInstructions: this.options.helpFile
+          ? [
+              `When the user asks about ZPI CLI itself, read its local documentation at ${JSON.stringify(this.options.helpFile)}.`,
+            ]
+          : undefined,
         homeDir: this.options.homeDir,
         agentDir,
         sessionManager: manager,
+        modelPerformanceTotals: performance.snapshot,
         model,
         modelRuntime: runtime,
         resourceLoader: this.resources.loader,
@@ -354,6 +387,7 @@ export class CliHost {
         ? SessionManager.inMemory(this.cwd, { id })
         : SessionManager.create(this.cwd, join(agentDir, "sessions"), { id });
       const session = await this.create(manager, agentDir, selection, effort);
+      if (this.draft.name) session.setSessionName(this.draft.name);
       this.active = { manager, session, selection, agentDir, release, temporary };
       this.draft = {};
     } catch (error) {
@@ -387,8 +421,8 @@ export class CliHost {
     signal.throwIfAborted();
     const control = options.literal ? "" : text.trim().toLowerCase();
     if (control === "/help")
-      return [...commands, ...(await this.listCommands())]
-        .map(({ name, description }) => `/${name}  ${description}`)
+      return [...commands, ...(await this.listCommands({ includeSkills: false }))]
+        .map((item) => `${commandUsage(item)}  ${item.description}`)
         .join("\n");
     if (control === "/context") {
       const usage = this.getContext();
@@ -397,7 +431,6 @@ export class CliHost {
         : "当前会话尚无上下文";
     }
     const prepared = await this.resources.prepare(text, {
-      skill: options.skill,
       literal: options.literal,
       print: this.options.print ?? this.options.ephemeral,
     });

@@ -29,9 +29,15 @@ export type LoginSource =
   | { kind: "key"; value: string }
   | { kind: "env"; name: string }
   | { kind: "none" };
+export interface ManualModel {
+  id: string;
+  contextWindow: number;
+  maxTokens: number;
+  efforts?: string[];
+}
 export interface LoginInteraction {
   authorize(login: ChatGPTLogin): Promise<ChatGPTCredential>;
-  manualModels(previous: DiscoveredModel[]): Promise<DiscoveredModel[]>;
+  manualModels(previous: DiscoveredModel[], efforts: string[]): Promise<ManualModel[]>;
   warn(message: string): void;
   signal?: AbortSignal;
 }
@@ -86,8 +92,12 @@ export class Accounts {
   private get fetcher() {
     return this.requestFetch ?? globalThis.fetch;
   }
-  availableModels() {
-    const state = this.snapshot;
+  setThinkingHidden(hidden: boolean) {
+    this.store.update((state) => {
+      state.hideThinking = hidden;
+    });
+  }
+  availableModels(state = this.snapshot) {
     return state.accounts
       .filter((a) => a.id === state.active[a.provider])
       .flatMap((account) =>
@@ -95,7 +105,12 @@ export class Accounts {
           const id = `${account.provider}/${m.id}`;
           return {
             id,
+            name: m.name ?? m.id,
+            subscription: account.credential.kind === "oauth",
             isDefault: id === state.defaultModel,
+            provider: account.provider,
+            api: account.api,
+            definition: m,
           };
         }),
       );
@@ -166,7 +181,7 @@ export class Accounts {
     if (credential.kind === "oauth") throw noAccount();
     return Promise.resolve(this.readKey(credential));
   }
-  async selectModel(explicit?: string, previous?: ModelBinding) {
+  private configuredModel(explicit?: string, previous?: ModelBinding) {
     const state = this.snapshot;
     const pinned = explicit === undefined ? previous : undefined;
     const selector = explicit ?? (pinned ? `${pinned.provider}/${pinned.modelId}` : state.defaultModel);
@@ -179,6 +194,17 @@ export class Accounts {
     if (!account) throw noAccount();
     const selected = account.models.find((m) => m.id === modelId);
     if (!selected) throw new Error("该账户未启用所选模型，请用 zpi models 查看，或用 -m 明确选择其他模型。");
+    return { account, selected };
+  }
+  async getEfforts(explicit?: string) {
+    const { account, selected } = this.configuredModel(explicit);
+    const { thinkingChoices } = await import("@zpi-dev/ai");
+    return thinkingChoices({ ...selected, api: account.api, reasoning: selected.reasoning ?? false });
+  }
+  async selectModel(explicit?: string, previous?: ModelBinding) {
+    const { account, selected } = this.configuredModel(explicit, previous);
+    const { provider } = account;
+    const modelId = selected.id;
     // Reconstruct built-ins so a settings file cannot redirect a subscription token.
     const oauth = account.credential.kind === "oauth";
     const [{ runtimeModel, serviceFor }, { ModelRuntime }] = await Promise.all([
@@ -256,7 +282,7 @@ export class Accounts {
         const models = await chooseEnabledModels(
           service,
           key,
-          old?.models ?? [],
+          old?.api === service.api ? old.models : [],
           input.kind === "oauth" && Boolean(input.reuse),
           ui,
           this.fetcher,

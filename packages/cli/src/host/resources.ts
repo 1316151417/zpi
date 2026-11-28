@@ -49,7 +49,7 @@ export class CliResources {
     });
   }
 
-  async listSkills() {
+  private async listSkills() {
     await this.skills.reload();
     return this.skills.listSkills().skills;
   }
@@ -89,39 +89,42 @@ export class CliResources {
     return catalog;
   }
 
-  async listCommands(print = false) {
+  async listCommands({ print = false, includeSkills = true } = {}) {
     const list = [];
-    for (const [name, { command, skill }] of await this.slashCatalog()) {
+    const catalog = includeSkills ? await this.slashCatalog() : await this.fileCommands();
+    for (const [name, { command, skill }] of catalog) {
       if (skill) {
-        list.push({ name, description: `Skill · ${skill.description}` });
+        list.push({ name, description: skill.description, kind: "skill" as const });
         continue;
       }
       if (!command?.enabled || builtinNames.has(name) || (print && command.disableNonInteractive)) continue;
       const plan = prepareCustomCommandPrompt(command, "");
       if (!plan.parts.some((part) => part.kind === "shell"))
-        list.push({ name, description: command.description ?? "" });
+        list.push({
+          name,
+          description: command.description ?? "",
+          argumentHint: command.argumentHint,
+          kind: "command" as const,
+        });
     }
     return list;
   }
 
-  async prepare(text: string, options: { skill?: string; print?: boolean; literal?: boolean }) {
+  async prepare(text: string, options: { print?: boolean; literal?: boolean }) {
     const match =
       !options.literal && /^\s*\/(\$\S+|[\p{L}\p{N}_:-]+(?:\/[\w:-]+)*)(?:\s+([\s\S]*))?$/u.exec(text);
     let body = text;
     let verify: (() => Promise<void>) | undefined;
     let compact = false;
     let required: string[] = [];
-    let catalogLoaded = false;
     if (match) {
       const commandName = match[1].startsWith("$") ? match[1] : key(match[1]).replaceAll(":", "/");
       if (builtinNames.has(commandName)) {
         if (!isSessionCommand(commandName)) throw new Error(`/${commandName} 需要在交互终端中使用`);
         compact = commandName === "compact";
-        if (compact && options.skill) throw new Error("/compact 不接收 Skill");
         body = `/${commandName}${match[2] ? ` ${match[2]}` : ""}`;
       } else {
         const entry = (await this.slashCatalog()).get(commandName);
-        catalogLoaded = true;
         if (entry?.problem) throw new Error(entry.problem);
         if (entry?.skill) {
           required = [entry.skill.name];
@@ -157,9 +160,7 @@ export class CliResources {
         else throw new Error(`未知命令 /${commandName}。用 /help 查看可用命令。`);
       }
     }
-    const skills = new Set([...required, ...(options.skill ? [options.skill] : [])]);
-    if (skills.size && !catalogLoaded) await this.skills.reload();
-    for (const name of skills) {
+    for (const name of new Set(required)) {
       const skill = await this.skills.loadSkill(name);
       body += `\n\nRequired skill: ${skill.name}\nSkill source: ${skill.path}\n${skill.body}`;
     }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { stripVTControlCharacters } from "node:util";
+import xterm from "@xterm/xterm";
 import { spawn as openPty } from "node-pty";
 
 export function invoke(bin, args, options, input = "") {
@@ -23,7 +24,10 @@ export function invoke(bin, args, options, input = "") {
   });
 }
 
-export function terminal(bin, args, options) {
+export function terminal(bin, args, { trackScreen, ...options }) {
+  const screen = trackScreen
+    ? new xterm.Terminal({ cols: 110, rows: 34, allowProposedApi: true })
+    : undefined;
   const pty = openPty(bin, args, { ...options, cols: 110, rows: 34, name: "xterm-256color" });
   let output = "";
   let cursor = 0;
@@ -31,6 +35,7 @@ export function terminal(bin, args, options) {
   let wake;
   pty.onData((chunk) => {
     output += chunk;
+    screen?.write(chunk);
     wake?.();
   });
   const exit = new Promise((resolve) =>
@@ -62,12 +67,23 @@ export function terminal(bin, args, options) {
   return {
     waitFor,
     write: (data) => pty.write(data),
-    resize: (cols, rows) => pty.resize(cols, rows),
+    resize: (cols, rows) => {
+      pty.resize(cols, rows);
+      screen?.resize(cols, rows);
+    },
     exit,
     output: () => stripVTControlCharacters(output),
     rawOutput: () => output,
+    screen: async () => {
+      assert.ok(screen, "trackScreen must be enabled to inspect rendered rows");
+      await new Promise((done) => screen.write("", done));
+      return Array.from({ length: screen.rows }, (_, i) =>
+        screen.buffer.active.getLine(screen.buffer.active.viewportY + i),
+      );
+    },
     kill: () => {
       if (!ended) pty.kill("SIGKILL");
+      screen?.dispose();
     },
   };
 }
@@ -75,7 +91,7 @@ export function terminal(bin, args, options) {
 export async function login(
   bin,
   options,
-  { name, protocol = 0, base, account, variable, existing = false, manual = false },
+  { name, protocol = 0, base, account, variable, existing = false, manual = false, effort },
 ) {
   const ui = terminal(
     bin,
@@ -98,6 +114,9 @@ export async function login(
       await answer("模型 ID", "manual-test");
       await answer("上下文上限");
       await answer("输出上限");
+      const levels = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+      assert.ok(!effort || levels.includes(effort));
+      await answer("支持的推理档位", effort ? `${down.repeat(levels.indexOf(effort))} ` : "");
       await answer("再添加一个模型", "n");
     }
     assert.equal((await ui.exit).exitCode, 0, ui.output());

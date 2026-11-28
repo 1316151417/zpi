@@ -37,6 +37,7 @@ interface AccountState {
   accounts: Account[];
   active: Record<string, string>;
   defaultModel?: string;
+  hideThinking?: boolean;
 }
 export interface SecretStore {
   get(ref: string): string | null;

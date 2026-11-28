@@ -1,10 +1,18 @@
 import { spawn } from "node:child_process";
-import { confirm, input, password, select } from "@inquirer/prompts";
-import { type DiscoveredModel, type ProviderApi, providerPresets } from "@zpi-dev/ai";
+import { checkbox, confirm, input, password, select } from "@inquirer/prompts";
+import type { ProviderApi } from "@zpi-dev/ai";
 import type { ChatGPTLogin } from "@zpi-dev/ai/auth/openai-chatgpt";
 import { UsageError } from "../args.ts";
-import type { Accounts, LoginInteraction, LoginSource } from "./index.ts";
-import { allowsNoKey, cleanBaseUrl, customAlias, serviceFor, validEnvName, validName } from "./services.ts";
+import type { Accounts, LoginInteraction, LoginSource, ManualModel } from "./index.ts";
+import {
+  allowsNoKey,
+  cleanBaseUrl,
+  customAlias,
+  loginProviders,
+  serviceFor,
+  validEnvName,
+  validName,
+} from "./services.ts";
 import { validModelId } from "./store.ts";
 
 const choices = <T extends string>(entries: [T, string][]) =>
@@ -65,27 +73,37 @@ function modelPrompts(signal: AbortSignal): LoginInteraction {
     signal,
     authorize: (login) => browserLogin(login, signal),
     warn: (message) => process.stderr.write(`${message}\n`),
-    manualModels: async (previous) => {
+    manualModels: async (previous, efforts) => {
       process.stderr.write("服务未提供模型目录，请填写模型信息。\n");
-      const added: DiscoveredModel[] = [];
+      const added: ManualModel[] = [];
       do {
-        const existing = previous[added.length];
         const id = await input(
           {
             message: "模型 ID",
-            default: existing?.id,
+            default: previous.find((model) => !added.some((entry) => entry.id === model.id))?.id,
             validate: (v) =>
               (validModelId(v) && !added.some((m) => m.id === v)) || "请输入有效且唯一的模型 ID。",
           },
           terminal,
         );
+        const existing = previous.find((model) => model.id === id);
         const contextWindow = await limit("上下文上限", existing?.contextWindow ?? 32768);
         const maxTokens = await limit(
           "输出上限",
           Math.min(existing?.maxTokens ?? 4096, contextWindow),
           contextWindow,
         );
-        added.push({ id, contextWindow, maxTokens });
+        const selected = await checkbox(
+          {
+            message: "支持的推理档位（按空格选择，未声明可留空）",
+            choices: efforts.map((level) => ({
+              value: level,
+              checked: existing?.reasoning === true && existing.thinkingLevelMap?.[level] !== null,
+            })),
+          },
+          terminal,
+        );
+        added.push({ id, contextWindow, maxTokens, efforts: selected });
       } while (await confirm({ message: "再添加一个模型", default: false }, terminal));
       return added;
     },
@@ -102,22 +120,7 @@ export async function login(
   if (accountName && !validName(accountName)) throw new UsageError("账户名称无效。");
   const terminal = { output: process.stderr, signal };
   const state = accounts.snapshot;
-  const custom = [...new Set(state.accounts.filter((a) => customAlias(a.provider)).map((a) => a.provider))];
-  provider ??= await select(
-    {
-      message: "选择服务",
-      choices: [
-        ...choices([
-          ["openai", "OpenAI"],
-          ["anthropic", "Anthropic"],
-        ]),
-        ...providerPresets.filter((p) => p.family !== "openai").map((p) => ({ value: p.id, name: p.name })),
-        ...custom.map((value) => ({ value, name: value })),
-        { value: "custom", name: "自定义服务" },
-      ],
-    },
-    terminal,
-  );
+  provider ??= await select({ message: "选择服务", choices: loginProviders(state.accounts) }, terminal);
   if (method === "oauth" && provider !== "openai") throw new UsageError("仅 openai 支持 --method oauth。");
   const configureAddress = provider === "custom";
   if (configureAddress)
@@ -238,6 +241,5 @@ export async function login(
       };
     else source = { kind };
   }
-  const account = await accounts.connect(service, name, source, modelPrompts(signal));
-  process.stdout.write(`已连接 ${account.provider}，已启用 ${account.models.length} 个模型。\n`);
+  return accounts.connect(service, name, source, modelPrompts(signal));
 }

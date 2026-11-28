@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { addAbortSignal } from "node:stream";
 import { text } from "node:stream/consumers";
+import { fileURLToPath } from "node:url";
 import { help, parseInvocation, printPrompt, UsageError } from "./args.ts";
 
 declare const ZPI_CLI_VERSION: string;
@@ -56,6 +57,7 @@ async function main(): Promise<number> {
     cwd: process.cwd(),
     root,
     homeDir,
+    helpFile: fileURLToPath(new URL("../README.md", import.meta.url)),
     accounts,
     model,
     effort,
@@ -76,6 +78,7 @@ async function main(): Promise<number> {
     const { runInteractive } = await import("./tui/index.ts");
     return await runInteractive({
       host,
+      version: ZPI_CLI_VERSION,
       initialPrompt: prompt,
       selectSession: resume === true,
       accounts,

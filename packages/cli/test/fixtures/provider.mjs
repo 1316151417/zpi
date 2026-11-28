@@ -33,6 +33,8 @@ export async function testProvider() {
         typeof messages[lastUser]?.content === "string"
           ? messages[lastUser].content
           : JSON.stringify(messages[lastUser]?.content ?? body.input ?? "");
+      const layout = question === "exercise-layout";
+      const thinking = question.includes("show-thinking");
       const calls =
         body.tools?.length && question.includes("exercise-tools")
           ? [
@@ -41,13 +43,17 @@ export async function testProvider() {
               ["edit", { path: "demo.txt", edits: [{ oldText: "before", newText: "after" }] }],
               ["bash", { command: "cat demo.txt > proof.txt" }],
             ]
-          : [];
+          : layout
+            ? [["read", { path: "demo.txt" }]]
+            : [];
       const index = messages.slice(lastUser + 1).filter((m) => m.role === "tool").length;
       const call = calls[index];
       res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" });
       res.flushHeaders();
       if (question.includes("hold-this-request")) return;
-      const reply = `answer-${body.model}`;
+      const reply = layout
+        ? "## Heading\n\nA first paragraph.\n\nSecond paragraph:\n- line one\n- line two\n\n```ts\nconst ok = true;\n```\n\nFinal line."
+        : `answer-${body.model}`;
       const send = (event) =>
         res.write(`${event.type ? `event: ${event.type}\n` : ""}data: ${JSON.stringify(event)}\n\n`);
       if (req.url.includes("/chat/completions")) {
@@ -59,6 +65,10 @@ export async function testProvider() {
             choices: [{ index: 0, delta, finish_reason }],
           });
         if (call) {
+          if (layout) {
+            chunk({ role: "assistant", reasoning_content: "**Reason one**\n\n- note" });
+            chunk({ content: "Checking the sample." });
+          }
           chunk({
             role: "assistant",
             tool_calls: [
@@ -72,12 +82,19 @@ export async function testProvider() {
           });
           chunk({}, "tool_calls");
         } else {
-          if (question.includes("show-thinking")) chunk({ reasoning_content: "检查终端回放" });
+          if (thinking) chunk({ reasoning_content: "检查终端回放" });
           chunk({ role: "assistant", content: reply });
           chunk({}, "stop");
         }
         res.write("data: [DONE]\n\n");
       } else if (req.url.includes("/responses")) {
+        if (thinking)
+          send({
+            type: "response.reasoning_summary_text.delta",
+            item_id: "reason1",
+            summary_index: 0,
+            delta: "Responses 可见摘要",
+          });
         send({ type: "response.output_text.delta", item_id: "item1", content_index: 0, delta: reply });
         send({
           type: "response.completed",
@@ -88,8 +105,18 @@ export async function testProvider() {
           type: "message_start",
           message: { id: "msg1", model: body.model, usage: { input_tokens: 1, output_tokens: 0 } },
         });
-        send({ type: "content_block_start", index: 0, content_block: { type: "text", text: reply } });
-        send({ type: "content_block_stop", index: 0 });
+        if (thinking) {
+          send({ type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } });
+          send({
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "thinking_delta", thinking: "Anthropic 可见推理" },
+          });
+          send({ type: "content_block_stop", index: 0 });
+        }
+        const index = thinking ? 1 : 0;
+        send({ type: "content_block_start", index, content_block: { type: "text", text: reply } });
+        send({ type: "content_block_stop", index });
         send({ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 2 } });
         send({ type: "message_stop" });
       }

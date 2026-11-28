@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { reasoningParameters, thinkingChoices } from "@zpi-dev/ai";
 import type { ChatGPTCredential } from "@zpi-dev/ai/auth/openai-chatgpt";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { afterEach, expect, it, vi } from "vitest";
@@ -120,6 +121,49 @@ it("requires explicit env bindings, preserves a valid account after rejection, a
   expect(() => serviceFor("local", "oauth", custom)).toThrow();
   expect(() => serviceFor("local", "key", { ...custom, baseUrl: "https://key@example.test/v1" })).toThrow();
 });
+
+it.each(["openai-completions", "openai-responses", "anthropic-messages"] as const)(
+  "preserves user-declared manual model efforts by ID across reconnects using %s",
+  async (api) => {
+    const { accounts, open, secrets } = fixture(async () => new Response(null, { status: 404 }));
+    const service = serviceFor("local", "key", { api, baseUrl: "http://localhost:1234" });
+    const source = { kind: "key", value: "local-key" } as const;
+    const options = { contextWindow: 48000, maxTokens: 12000 };
+    await accounts.connect(service, "work", source, {
+      ...allModels,
+      manualModels: async (_, efforts) => {
+        expect(efforts).toContain("high");
+        return [
+          { id: "chat", ...options },
+          { id: "reasoner", ...options, efforts: ["medium", "high"] },
+        ];
+      },
+    });
+    const inspect = async (id: string) => (await open().selectModel(`local/${id}`)).model;
+    const secretRead = vi.spyOn(secrets, "get");
+    expect(await accounts.getEfforts("local/reasoner")).toEqual(["medium", "high"]);
+    expect(secretRead).not.toHaveBeenCalled();
+    expect(thinkingChoices(await inspect("chat"))).toEqual(["off"]);
+    const reasoner = await inspect("reasoner");
+    expect(thinkingChoices(reasoner)).toEqual(["medium", "high"]);
+    expect(reasoningParameters(reasoner, "high")).toEqual(
+      api === "anthropic-messages"
+        ? { thinking: { type: "enabled", budget_tokens: 16384 } }
+        : { reasoning_effort: "high" },
+    );
+    await accounts.connect(service, "work", source, {
+      ...allModels,
+      manualModels: async (previous) => previous.toReversed().map(({ id }) => ({ id, ...options })),
+    });
+    expect(thinkingChoices(await inspect("reasoner"))).toEqual(["medium", "high"]);
+    expect(thinkingChoices(await inspect("chat"))).toEqual(["off"]);
+    await accounts.connect(service, "work", source, {
+      ...allModels,
+      manualModels: async () => [{ id: "reasoner", ...options, efforts: [] }],
+    });
+    expect(thinkingChoices(await inspect("reasoner"))).toEqual(["off"]);
+  },
+);
 
 async function oauthFixture() {
   const keys = await generateKeyPair("RS256", { extractable: true });

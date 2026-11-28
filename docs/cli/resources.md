@@ -8,7 +8,7 @@
 | --- | --- |
 | 项目说明 | 原生 `FileResourceLoader` 读取用户的 `~/.agents/AGENTS.md`、`~/.zpi/AGENTS.md` 和当前目录的 `AGENTS.md`、`.zpi/AGENTS.md`。编辑同一文件后，两端都能使用。 |
 | 运行设置 | 交给 `SettingsManager` 读取工作区 `.zpi/settings.json`，沿用原生重试、压缩等设置。 |
-| Skills | 复用用户和当前工作区的 `.agents/skills`、`.zpi/skills` 及原有同名优先级。`/` 菜单列出已发现的 Skill，可用 `/<名称> [要求]` 直接调用，或用 `/skills` 为下一条消息预选。只有显式使用时才把对应正文加入请求。 |
+| Skills | 复用用户和当前工作区的 `.agents/skills`、`.zpi/skills` 及原有同名优先级。`/` 菜单列出可用 Skill。直接输入 `/<名称> [要求]`，或用 `/skills` 把选中名称填回编辑框。完整名称行内高亮，提交时才把对应正文加入请求。 |
 | 文件命令 | 用户和当前目录的 `.zpi/commands`、同级 `.zpi/command-state.json` 是公共文件。CLI 提供现有提示模板的调用入口，创建和管理仍在 Desktop。 |
 
 CLI 不打开 Desktop 的私有数据库或 `credentials.enc`。两端各自的会话和模型管理都独立于上表中的公共文件。[原生资源发现](../../packages/coding-agent/src/core/resources.ts) · [运行设置](../../packages/coding-agent/src/core/settings-manager.ts) · [桌面私有设置](../../packages/desktop/src/main/storage.ts)

@@ -1,11 +1,11 @@
 # zpi CLI 实现规划
 
-zpi Desktop 是主要工作入口。用户在终端可以把当前目录里的短任务交给 zpi，回来接着上次的 CLI 对话做，也可以把管道输入交给模型、把结果交还脚本。沿用 Claude Code 熟悉的输入方式，让桌面用户偶尔打开终端也会用。
+zpi Desktop 是主要工作入口。CLI 面向当前目录里的短任务、同目录续聊和管道调用。界面、键盘编辑和模型选择以 Pi 为参照，保留 zpi 能执行的 Claude Code 斜杠命令。
 
 ## 五条产品原则
 
 1. **由 CLI 适配已有 zpi。** 新增 `packages/cli/`，通过现有接口接入模型、会话和工具。内核、SDK、插件和 Desktop 均零改动。某项交互若需要为 CLI 新开内核接口或桌面服务，就从本方案中移出。
-2. **以已有能力划定上限。** 一个内置命令必须能够指向现有 zpi 执行入口，或者解释它为什么是必要的终端操作。Claude Code 是交互参考。zpi 没有的 `/commit`、`/review`、`/summary` 不迁移命令、提示模板或配套代码。`/compact` 直接使用 zpi 已有的上下文压缩。
+2. **以已有能力划定上限。** 每个内置命令都要对应现有 zpi 能力或必要的终端操作。例如 `/compact` 使用 zpi 的上下文压缩。已排除的 `/commit`、`/review`、`/summary` 同时排除其提示模板和配套代码。
 3. **沿用 zpi 的执行方式。** 用户提交任务后，模型调用与工具执行按内核已有语义进行。审批、权限模式、计划模式、MCP 和 workflow 不进入产品范围。模型遇到业务歧义时可以照常提问。
 4. **模型和会话独立，工作区文件共用。** 用户通过 `zpi auth` 独立配置 CLI 的服务、账户和模型，CLI 不打开桌面数据库。ChatGPT 订阅使用与 Desktop 不同的实际 OAuth 应用 ID。CLI 历史按实际目录收在 `~/.zpi/cli/`。两端共用已有的 AGENTS.md、Skill 和命令文件及项目运行设置。
 5. **桌面优先，让长尾入口保持轻量。** 内核支持一项能力，只说明它有资格进入候选。纳入 CLI 还要确实服务上述三个场景，并且能用很少的界面和状态完成。需要新建项目管理、后台调度或跨文件恢复机制的工作，继续由 Desktop 承担。
@@ -16,7 +16,7 @@ zpi Desktop 是主要工作入口。用户在终端可以把当前目录里的�
 
 | 原规划中的设计 | 本版决定 |
 | --- | --- |
-| 交互如何验收 | 对范围内的操作，逐项对照 Claude Code 的呈现、按键、焦点、运行反馈和历史回放。模型配置按 Pi 的登录和选模流程验收。见[交互对照](parity.md)。 |
+| 交互如何验收 | 按 Pi 对照布局、消息间距、Markdown、思考与工具显示、编辑器和选模。按 Claude Code 的命令名核对 zpi 已有操作，单独验证用户指定的 Skill 行内高亮、命令参数提示和精简帮助。[交互对照](parity.md) |
 | 模型和账户如何配置 | `zpi auth login/list/switch/logout` 管理连接与当前账户，`zpi models` 列出启用的模型，`-m` 选本次模型。支持多服务、多模型和内核已有的三种协议。无需手写配置文件。 |
 | 分支、文件回退、工作树、旁聊、任务面板及长期记忆整理 | 从 CLI 交付范围移除。部分能力在 zpi 或 Desktop 已有，但终端版完整体验需要第二套会话或任务宿主。 |
 | 可恢复输入队列、全局状态索引、版本化流事件协议 | 使用进程内草稿、按目录的原生历史文件和纯文本管道。只保留避免两个进程同时破坏同一条历史的写锁。 |
@@ -40,11 +40,11 @@ zpi -c -p "列出刚才的对话里还有哪些待验证的地方"
 
 | 文档 | 内容 |
 | --- | --- |
-| [Claude Code 与 Pi 交互对照](parity.md) | 覆盖范围、已验证的终端行为、剩余差异和产品取舍。 |
+| [Pi 交互与 Claude Code 命令对照](parity.md) | 可观察的终端行为、命令来源索引和产品取舍。 |
 | [终端交互](interaction.md) | CLI 调用、斜杠命令、按键、错误与打印契约。 |
 | [会话执行与隔离](runtime.md) | 单一原生执行路径、按目录续聊、临时快照及跨进程写锁。 |
 | [模型配置与账户](models.md) | 连接多个服务、多种协议和多个账户，列出模型、指定默认值，以及 OpenAI 订阅与 API 计费的选择规则。 |
 | [公共资源与订阅授权](resources.md) | 哪些工作区文件可共用，以及独立订阅授权如何取得不同应用 ID。 |
 | [实现顺序与验收](delivery.md) | 三步开发、真实终端测试、同账号双端授权验证和发包条件。 |
 
-终端组件使用可复用的 pi-tui。行为对照优先使用可运行的 Claude 参考仓库，实际交付范围以上述五条原则为准。[Claude Code 交互说明](https://code.claude.com/docs/en/interactive-mode) · [可运行参考](https://github.com/claude-code-best/claude-code) · [旧版本快照](https://github.com/ChinaSiro/claude-code-sourcemap) · [pi-tui](https://github.com/earendil-works/pi/blob/main/packages/tui/README.md)
+终端组件直接复用 pi-tui。Pi 的屏幕与现有编辑器行为用于界面验收，Claude 命令的来源和适用范围记录在交互对照中。[Pi 终端组件](https://github.com/earendil-works/pi/blob/2126569de40d5595dd3f41f7af126001f04c1de0/packages/tui/README.md) · [Claude Code 命令索引](parity.md#claude-code-静态入口索引)

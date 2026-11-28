@@ -1,30 +1,50 @@
-import { sep } from "node:path";
+import { execFile } from "node:child_process";
+import { basename, sep } from "node:path";
 import {
+  type Component,
   Container,
-  Editor,
   getNativeClipboard,
+  Input,
   isKeyRelease,
+  Loader,
   matchesKey,
   ProcessTerminal,
+  ScrollView,
   type SelectItem,
   SelectList,
   type SlashCommand,
   Spacer,
   Text,
-  TruncatedText,
-  TuiMainScreen,
+  TuiAltScreen,
+  VStack,
 } from "@earendil-works/pi-tui";
+import { clampThinkingLevel } from "@zpi-dev/ai";
 import { imageLimits } from "@zpi-dev/coding-agent";
 import type { Accounts } from "../accounts/index.ts";
-import { builtinNames, commands, isSessionCommand } from "../host/commands.ts";
+import { loginProviders } from "../accounts/services.ts";
+import { commands, isSessionCommand, sessionNameProblem } from "../host/commands.ts";
 import type { CliHost } from "../host/index.ts";
-import { Completions, references } from "./completion.ts";
+import { Completions, references, withArgumentChoices } from "./completion.ts";
+import { Footer } from "./footer.ts";
+import { HelpPanel, shortcutCard } from "./help.ts";
+import { PromptEditor } from "./prompt-editor.ts";
 import { SearchPicker } from "./search-picker.ts";
-import { bold, dim, listTheme, safeText, wordmark } from "./theme.ts";
+import { Startup } from "./startup.ts";
+import {
+  accent,
+  bold,
+  dim,
+  failure,
+  listTheme,
+  panelBorder,
+  safeText,
+  thinkingBorderColor,
+} from "./theme.ts";
 import { Transcript } from "./transcript.ts";
 
 interface InteractiveOptions {
   host: CliHost;
+  version: string;
   initialPrompt?: string;
   selectSession?: boolean;
   accounts: Accounts;
@@ -33,17 +53,9 @@ interface InteractiveOptions {
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-class PromptEditor extends Editor {
-  override render(width: number) {
-    const lines = super.render(width);
-    // Use the editor's reserved left margin so IME and mouse positions stay aligned.
-    if (lines[1]?.startsWith("  ")) lines[1] = dim("❯") + lines[1].slice(1);
-    return lines;
-  }
-}
-
 export async function runInteractive({
   host,
+  version,
   accounts,
   initialPrompt,
   selectSession,
@@ -51,54 +63,119 @@ export async function runInteractive({
 }: InteractiveOptions): Promise<number> {
   if (signal?.aborted) return 130;
   const terminal = new ProcessTerminal();
-  const tui = new TuiMainScreen(terminal, true);
+  const tui = new TuiAltScreen(terminal, true);
   const transcript = new Transcript();
+  const document = new Container();
+  const startup = new Startup(version);
+  const settings = host.readSettings();
+  const progress = new Container();
   const panel = new Container();
-  const status = new Text("", 1, 0);
-  const editor = new PromptEditor(
-    tui,
-    { borderColor: dim, selectList: listTheme },
-    { paddingX: 2, autocompleteMaxVisible: 5 },
+  const home = host.homeDir;
+  const footer = new Footer(
+    host.cwd === home || host.cwd.startsWith(home + sep) ? `~${host.cwd.slice(home.length)}` : host.cwd,
   );
-  async function availableCommands(reportErrors = false): Promise<SlashCommand[]> {
+  const viewport = new ScrollView(document, { follow: "end", primary: true });
+  const dock = new VStack([
+    { component: progress, minSize: 0, shrink: 1 },
+    { component: panel, minSize: 3, shrink: 1 },
+    { component: footer, minSize: 0, shrink: 1 },
+  ]);
+  tui.setLayoutRoot(
+    new VStack([
+      { component: viewport, basis: 0, grow: 1, minSize: 1 },
+      { component: dock, shrink: 1, minSize: 1 },
+    ]),
+  );
+  function showChat() {
+    document.clear();
+    document.addChild(startup);
+    document.addChild(transcript);
+  }
+  function readBranch() {
+    execFile(
+      "git",
+      ["symbolic-ref", "--short", "--quiet", "HEAD"],
+      { cwd: host.cwd, timeout: 1000 },
+      (error, output) => {
+        if (closing) return;
+        footer.branch = error ? "" : output.trim();
+        tui.requestRender();
+      },
+    );
+  }
+  const argumentChoices = {
+    model: () => accounts.availableModels().map(({ id }) => id),
+    effort: () => host.getEfforts(),
+    fast: () => ["on", "off"],
+    login: () => loginProviders(accounts.snapshot.accounts).map(({ value }) => value),
+  };
+  async function availableCommands(forHelp = false): Promise<SlashCommand[]> {
+    const builtins = forHelp ? commands : withArgumentChoices(commands, argumentChoices);
     try {
-      return [...(await host.listCommands()), ...commands];
+      const custom = await host.listCommands({ includeSkills: !forHelp });
+      return forHelp ? [...builtins, ...custom] : [...custom, ...builtins];
     } catch (error) {
-      if (reportErrors) transcript.note(messageOf(error));
-      return [...commands];
+      if (forHelp) transcript.note(messageOf(error), "error");
+      return builtins;
     }
   }
-  editor.setAutocompleteProvider(new Completions(host.cwd, availableCommands));
-  let skill: string | undefined;
+  let pastedCommand: string | undefined;
+  const editor = new PromptEditor(
+    tui,
+    new Completions(host.cwd, availableCommands),
+    (token) => token === pastedCommand,
+  );
   let turn: AbortController | undefined;
   let task: Promise<void> | undefined;
   let cancelPicker: (() => void) | undefined;
-  let pastedCommand: string | undefined;
   let images = new Map<string, Uint8Array>();
   let imageIndex = 0;
-  let stash: { text: string; command?: string; skill?: string; images: typeof images } | undefined;
+  let stash: { text: string; command?: string; images: typeof images } | undefined;
   const inputHistory = new Set<string>();
   const exit = Promise.withResolvers<number>();
   let closing = false;
   let defaultModel: string | undefined;
+  let terminalTitle = "";
 
-  function models() {
-    const available = accounts.availableModels();
+  let available: ReturnType<Accounts["availableModels"]> = [];
+  function models(restorePreferences = false) {
+    const state = accounts.snapshot;
+    available = accounts.availableModels(state);
+    footer.providerCount = new Set(available.map((m) => m.provider)).size;
+    if (restorePreferences && state.hideThinking) transcript.toggleThinking();
     defaultModel = available.find((item) => item.isDefault)?.id;
     return available;
   }
 
   function update() {
     const current = host.getSelection();
-    const info = [
-      current.model ?? defaultModel,
-      current.effort && current.effort !== "off" && current.effort,
-      current.fast && "加速",
-      skill && `Skill ${skill}`,
-      stash && "草稿已暂存",
-      turn && "运行中",
-    ].filter(Boolean);
-    status.setText(!cancelPicker && info.length ? dim(safeText(info.join("  ·  "))) : "");
+    const selected = current.model ?? defaultModel ?? "";
+    const model = available.find((item) => item.id === selected);
+    footer.model = safeText(selected) || "no-model";
+    footer.subscription = current.subscription ?? model?.subscription ?? false;
+    footer.window = model?.definition.contextWindow;
+    const reasoning = model?.definition.reasoning ?? false;
+    const effort =
+      current.effort ??
+      (model && reasoning
+        ? clampThinkingLevel(
+            { ...model.definition, api: model.api, reasoning },
+            settings.getModelThinkingLevel(model.provider, model.definition.id) ??
+              settings.getDefaultThinkingLevel() ??
+              "medium",
+          )
+        : undefined);
+    footer.name = host.getSessionName() ?? "";
+    const title = ["ZPI", footer.name, basename(host.cwd) || host.cwd].filter(Boolean).join(" - ");
+    if (terminalTitle !== title) {
+      terminalTitle = title;
+      terminal.setTitle(safeText(title).replaceAll("\n", " "));
+    }
+    footer.mode = [effort === "off" ? reasoning && "thinking off" : effort, current.fast && "加速"]
+      .filter(Boolean)
+      .join(" • ");
+    footer.draft = stash ? "草稿已暂存" : "";
+    editor.borderColor = thinkingBorderColor(effort);
     tui.requestRender();
   }
   function finish(code: number) {
@@ -119,25 +196,14 @@ export async function runInteractive({
       }
     }
   }
-  function picker(
-    title: string,
-    items: SelectItem[],
-    empty: string,
-    selected?: string,
-    search?: { query: string; save?: () => void },
+  function showPanel(
+    title: string | undefined,
+    create: (done: (value?: string) => void) => Component,
+    hint = "",
+    feedback?: Text,
   ) {
     if (closing) return Promise.resolve(undefined);
-    if (!items.length) {
-      transcript.note(empty);
-      update();
-      return Promise.resolve(undefined);
-    }
     const result = Promise.withResolvers<string | undefined>();
-    const clean = items.map((item) => ({
-      ...item,
-      label: safeText(item.label).replaceAll("\n", " "),
-      description: item.description && safeText(item.description).replaceAll("\n", " "),
-    }));
     const done = (value?: string) => {
       cancelPicker = undefined;
       panel.clear();
@@ -147,58 +213,87 @@ export async function runInteractive({
       result.resolve(value);
     };
     cancelPicker = () => done();
-    let list: SelectList | SearchPicker;
-    if (search) {
-      list = new SearchPicker(
-        clean,
-        search.query,
-        selected,
-        (value, save) => {
-          if (save) search.save?.();
-          done(value);
-        },
-        cancelPicker,
-        !!search.save,
-      );
-    } else {
-      list = new SelectList(clean, 7, listTheme);
+    panel.clear();
+    const component = create(done);
+    panel.addChild(new Spacer(1));
+    if (title !== undefined) {
+      panel.addChild(panelBorder);
+      if (title) panel.addChild(new Text(bold(title) + (hint ? dim(`   ·   ${hint}`) : ""), 1, 0));
+    }
+    panel.addChild(component);
+    if (feedback) panel.addChild(feedback);
+    tui.setFocus(component);
+    update();
+    return result.promise;
+  }
+
+  function picker(
+    title: string | undefined,
+    items: SelectItem[],
+    empty: string,
+    selected?: string,
+    search?: { query: string; defaultModel?: string; save?: () => void },
+  ) {
+    if (!items.length) {
+      transcript.note(empty);
+      update();
+      return Promise.resolve(undefined);
+    }
+    const clean = items.map((item) => ({
+      ...item,
+      label: safeText(item.label).replaceAll("\n", " "),
+      description: item.description && safeText(item.description).replaceAll("\n", " "),
+    }));
+    return showPanel(title, (done) => {
+      if (search)
+        return new SearchPicker(
+          clean,
+          search.query,
+          selected,
+          (value, save) => {
+            if (save) search.save?.();
+            done(value);
+          },
+          () => done(),
+          search.save ? { defaultModel: search.defaultModel } : undefined,
+        );
+      const list = new SelectList(clean, 7, listTheme);
       list.setSelectedIndex(
         Math.max(
           0,
           items.findIndex((item) => item.value === selected),
         ),
       );
-      list.onCancel = cancelPicker;
+      list.onCancel = () => done();
       list.onSelect = (item) => done(item.value);
-    }
-    panel.clear();
-    panel.addChild(new Spacer(1));
-    panel.addChild(new Text(bold(title) + (search?.save ? dim("   ·   Ctrl+S 设为默认") : ""), 1, 0));
-    panel.addChild(list);
-    tui.setFocus(list);
-    update();
-    return result.promise;
+      return list;
+    });
   }
-  async function resume() {
+
+  function resetTranscript() {
+    const messages = host.getMessages();
+    transcript.reset(messages);
+    footer.restoreCost(messages);
+    footer.refresh(host);
+  }
+  async function resume(query = "") {
     const all = await host.listHistory();
-    for (const row of all) if (row.error) transcript.note(`无法读取 ${row.id} · ${row.error}`);
-    const chosen = await picker(
-      "继续会话",
-      all
-        .filter((row) => !row.error)
-        .map((row) => ({
-          value: row.id,
-          label: row.title,
-          description: new Date(row.mtime).toLocaleString(),
-        })),
-      "当前目录没有可继续的 CLI 会话",
-      undefined,
-      { query: "" },
-    );
+    for (const row of all) if (row.error) transcript.note(`无法读取 ${row.id} · ${row.error}`, "error");
+    const sessions = all
+      .filter((row) => !row.error)
+      .map((row) => ({
+        value: row.id,
+        label: row.title,
+        description: new Date(row.mtime).toLocaleString(),
+      }));
+    const exact = sessions.find((item) => item.value === query);
+    const chosen =
+      exact?.value ??
+      (await picker("继续会话", sessions, "当前目录没有可继续的 CLI 会话", undefined, { query }));
     if (chosen && !closing) {
       await host.resume(chosen);
-      transcript.reset(host.getMessages());
-      skill = undefined;
+      resetTranscript();
+      transcript.note(`已继续会话 · ${sessions.find((item) => item.value === chosen)?.label ?? chosen}`);
       images.clear();
       stash = undefined;
     }
@@ -206,17 +301,23 @@ export async function runInteractive({
   }
   async function local(name: string, argument = "") {
     switch (name) {
-      case "help":
-        transcript.note(
-          [
-            ...(await availableCommands(true)).map((cmd) => `/${cmd.name}   ${cmd.description ?? ""}`),
+      case "help": {
+        const definitions = await availableCommands(true);
+        document.clear();
+        try {
+          const selected = await showPanel(
             "",
-            "Ctrl+J 换行 · Ctrl+R 搜索输入 · Ctrl+O 思考与工具详情 · Ctrl+L / Alt+P 选模型",
-            "Ctrl+P / Ctrl+Shift+P 切换模型 · Shift+Tab 切换推理档位 · Alt+O 切换加速",
-            "Tab 采纳补全 · @ 引用文件或目录 · Esc 关闭候选或中断 · Ctrl+D 退出空输入框",
-            "Ctrl+V 粘贴图片 · Ctrl+S 暂存或取回草稿 · Ctrl+G 用外部编辑器编辑",
-          ].join("\n"),
-        );
+            (done) => new HelpPanel(definitions, done, () => terminal.rows),
+          );
+          if (selected) editor.setText(selected);
+        } finally {
+          showChat();
+        }
+        break;
+      }
+      case "hotkeys":
+        transcript.addPanel(shortcutCard());
+        viewport.scrollToEnd();
         break;
       case "copy": {
         if (argument && !/^[1-9]\d*$/.test(argument)) throw new Error("用法：/copy [倒数第几条回答]");
@@ -231,19 +332,44 @@ export async function runInteractive({
         break;
       case "clear":
         await host.clear();
-        transcript.reset([]);
-        skill = undefined;
+        resetTranscript();
         images.clear();
         stash = undefined;
         models();
         break;
       case "resume":
-        await resume();
+        await resume(argument);
         break;
-      case "rename":
-        await host.rename(argument);
-        transcript.note(`会话已命名为 ${argument}`);
+      case "rename": {
+        const feedback = new Text("", 1, 0);
+        const value =
+          argument ||
+          (await showPanel(
+            "重命名会话",
+            (done) => {
+              const field = new Input({
+                prompt: "名称  ",
+                placeholder: "输入会话名称",
+                placeholderStyle: dim,
+              });
+              field.setValue(host.getSessionName() ?? "");
+              field.onEscape = () => done();
+              field.onSubmit = (name) => {
+                const problem = sessionNameProblem(name.trim());
+                if (problem) feedback.setText(failure(`✕  ${safeText(problem)}`));
+                else done(name.trim());
+              };
+              return field;
+            },
+            "1–100 字 · Enter 保存 · Esc 取消",
+            feedback,
+          ));
+        if (value !== undefined) {
+          await host.rename(value);
+          transcript.note(`会话已命名为 ${value}`);
+        }
         break;
+      }
       case "model": {
         const items = models();
         const current = host.getSelection().model ?? defaultModel;
@@ -255,20 +381,18 @@ export async function runInteractive({
           exact?.id ??
           (sameId.length === 1 ? sameId[0].id : undefined) ??
           (await picker(
-            "选择模型",
+            undefined,
             items
-              .sort((a, b) => rank(a.id) - rank(b.id) || a.id.localeCompare(b.id))
-              .map(({ id }) => ({
-                value: id,
-                label: id,
-                description: [id === current && "当前", id === defaultModel && "默认"]
-                  .filter(Boolean)
-                  .join(" · "),
-              })),
+              .toSorted(
+                (a, b) =>
+                  rank(a.id) - rank(b.id) || a.id.split("/", 1)[0].localeCompare(b.id.split("/", 1)[0]),
+              )
+              .map(({ id, name }) => ({ value: id, label: name })),
             "尚无可用模型。使用 /login 连接服务。",
             current,
             {
               query: argument,
+              defaultModel,
               save: () => {
                 save = true;
               },
@@ -276,10 +400,12 @@ export async function runInteractive({
           ));
         if (value && !closing) {
           await host.setModel(value);
+          footer.refresh(host);
           if (save) {
             accounts.setDefault(value);
             defaultModel = value;
           }
+          transcript.note(save ? `当前与默认模型已设为 ${value}` : `当前模型已设为 ${value}`);
         }
         break;
       }
@@ -288,7 +414,13 @@ export async function runInteractive({
         const { runAccountCommand } = await import("../accounts/commands.ts");
         try {
           await inTerminal(() =>
-            runAccountCommand(accounts, "auth", argument ? [name, argument] : [name], signal),
+            runAccountCommand(
+              accounts,
+              "auth",
+              argument ? [name, argument] : [name],
+              signal,
+              (text, warning) => transcript.note(text.trimEnd(), warning ? "error" : "info"),
+            ),
           );
         } catch (error) {
           if (!(error instanceof Error && "exitCode" in error && error.exitCode === 130)) throw error;
@@ -297,18 +429,28 @@ export async function runInteractive({
         }
         break;
       }
-      case "fast":
-        await host.toggleFast();
+      case "fast": {
+        const mode = argument.toLowerCase();
+        if (mode && mode !== "on" && mode !== "off") throw new Error("用法：/fast [on|off]");
+        const enabled = await host.toggleFast(mode ? mode === "on" : undefined);
+        transcript.note(enabled ? "加速已开启" : "加速已关闭");
         break;
+      }
       case "effort": {
-        const levels = await host.getEfforts();
-        const value = await picker(
-          "推理档位",
-          levels.map((level) => ({ value: level, label: level })),
-          "当前模型没有可选推理档位",
-          host.getSelection().effort,
-        );
-        if (value && !closing) await host.setEffort(value);
+        let value: string | undefined = argument;
+        if (!value) {
+          const levels = await host.getEfforts();
+          value = await picker(
+            "推理档位",
+            levels.map((level) => ({ value: level, label: level })),
+            "当前模型没有可选推理档位",
+            host.getSelection().effort,
+          );
+        }
+        if (value && !closing) {
+          await host.setEffort(value);
+          transcript.note(`推理档位已设为 ${value}`);
+        }
         break;
       }
       case "context": {
@@ -323,20 +465,17 @@ export async function runInteractive({
         break;
       }
       case "skills": {
-        const skills = await host.listSkills();
-        const items: SelectItem[] = skills.map(({ name, description }) => ({
-          value: name,
-          label: name,
-          description,
-        }));
-        if (skill) items.unshift({ value: "", label: "移除已选 Skill" });
-        const value = await picker(
-          "为下一条消息选择 Skill",
-          items,
-          "当前目录和用户配置中没有可用 Skill",
-          skill,
-        );
-        if (value !== undefined) skill = value || undefined;
+        const items = (await host.listCommands())
+          .filter((cmd) => cmd.kind === "skill")
+          .map((cmd) => ({
+            value: cmd.name,
+            label: `/${cmd.name}`,
+            description: cmd.description,
+          }));
+        const value = await picker("选择 Skill", items, "当前目录和用户配置中没有可用 Skill", undefined, {
+          query: "",
+        });
+        if (value) editor.setText(`/${value} `);
         break;
       }
     }
@@ -351,14 +490,18 @@ export async function runInteractive({
       if (oldest !== undefined) inputHistory.delete(oldest);
     }
     const command = !literal && /^\/([\w:-]+)(?:\s+([\s\S]*))?$/.exec(text.trim());
-    if (command && builtinNames.has(command[1]) && !isSessionCommand(command[1])) {
-      if (command[2] && !["model", "login", "copy", "rename"].includes(command[1]))
-        throw new Error(`/${command[1]} 不接收参数`);
+    const builtin = command && commands.find((cmd) => cmd.name === command[1]);
+    if (command && builtin && !isSessionCommand(builtin.name)) {
+      if (!["help", "clear", "exit"].includes(builtin.name)) transcript.user(text);
+      if (command[2] && !builtin.argumentHint) throw new Error(`/${command[1]} 不接收参数`);
       await local(command[1], command[2]?.trim());
       return;
     }
     turn = new AbortController();
-    const started = performance.now();
+    let ranShell = false;
+    const loader = new Loader(tui, accent, dim, "运行中");
+    progress.addChild(loader);
+    viewport.scrollToEnd();
     transcript.beginTurn();
     transcript.user(text);
     update();
@@ -367,22 +510,27 @@ export async function runInteractive({
         literal,
         filePaths: literal ? [] : references(text),
         clipboardImages: [...images].filter(([marker]) => text.includes(marker)).map(([, bytes]) => bytes),
-        skill,
         signal: turn.signal,
         onEvent: (event) => {
+          if (event.type === "tool_execution_end" && event.toolName === "bash") ranShell = true;
+          if (event.type === "message_end" && event.message.role === "assistant")
+            footer.recordCost(event.message);
           transcript.event(event);
           tui.requestRender();
         },
       });
-      transcript.finishTurn(answer, performance.now() - started);
-      skill = undefined;
+      transcript.finishTurn(answer);
       images.clear();
     } catch (error) {
       transcript.finishTurn("");
       if (!turn.signal.aborted) throw error;
       transcript.note("已中断");
     } finally {
+      loader.stop();
+      progress.clear();
+      if (ranShell) readBranch();
       turn = undefined;
+      footer.refresh(host);
     }
   }
   function perform(action: () => Promise<void>) {
@@ -391,7 +539,7 @@ export async function runInteractive({
     task = Promise.resolve()
       .then(action)
       .catch((error) => {
-        transcript.note(messageOf(error));
+        transcript.note(messageOf(error), "error");
       })
       .finally(() => {
         task = undefined;
@@ -439,15 +587,13 @@ export async function runInteractive({
       if (matchesKey(data, "ctrl+s")) {
         const text = editor.getExpandedText();
         if (text.trim()) {
-          stash = { text, command: pastedCommand, skill, images };
+          stash = { text, command: pastedCommand, images };
           editor.setText("");
           pastedCommand = undefined;
-          skill = undefined;
           images = new Map();
         } else if (stash) {
-          editor.setText(stash.text);
           pastedCommand = stash.command;
-          skill = stash.skill;
+          editor.setText(stash.text);
           images = stash.images;
           stash = undefined;
         }
@@ -485,6 +631,7 @@ export async function runInteractive({
           const index = all.findIndex((m) => m.id === (host.getSelection().model ?? defaultModel));
           const next = (index + (previous ? -1 : 1) + all.length) % all.length;
           await host.setModel(all[next].id);
+          footer.refresh(host);
         });
         return { consume: true };
       }
@@ -514,7 +661,18 @@ export async function runInteractive({
         .match(/^\/\S+/)?.[0];
     else if (!editor.getText()) pastedCommand = undefined;
     if (matchesKey(data, "ctrl+o")) {
+      startup.toggleDetails();
       transcript.toggleDetails();
+      tui.requestRender();
+      return { consume: true };
+    }
+    if (matchesKey(data, "ctrl+t")) {
+      const hidden = transcript.toggleThinking();
+      try {
+        accounts.setThinkingHidden(hidden);
+      } catch (error) {
+        transcript.note(messageOf(error), "error");
+      }
       tui.requestRender();
       return { consume: true };
     }
@@ -548,20 +706,29 @@ export async function runInteractive({
   signal?.addEventListener("abort", onAbort, { once: true });
   process.stdin.once("end", onEnd);
   try {
-    transcript.reset(host.getMessages());
+    resetTranscript();
     try {
-      models();
+      models(true);
     } catch (error) {
-      transcript.note(messageOf(error));
+      transcript.note(messageOf(error), "error");
     }
-    const home = host.homeDir;
-    const directory =
-      host.cwd === home || host.cwd.startsWith(home + sep) ? `~${host.cwd.slice(home.length)}` : host.cwd;
-    tui.addChild(new TruncatedText(`${wordmark}   ${dim(safeText(directory))}`, 1, 1));
-    tui.addChild(transcript);
-    tui.addChild(panel);
+    showChat();
     panel.addChild(editor);
-    tui.addChild(status);
+    readBranch();
+    void host
+      .listCommands()
+      .then((commands) => {
+        if (!closing) {
+          startup.setSkills(commands.filter((cmd) => cmd.kind === "skill"));
+          tui.requestRender();
+        }
+      })
+      .catch((error) => {
+        if (!closing) {
+          transcript.note(messageOf(error), "error");
+          tui.requestRender();
+        }
+      });
     tui.setFocus(editor);
     tui.start();
     update();

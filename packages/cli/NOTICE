@@ -1,6 +1,7 @@
 This package includes the ZPI agent runtime. See dist/ZPI-NOTICE for the project's
 third-party notices. Terminal editing, Markdown rendering, and selection lists
-use @earendil-works/pi-tui (MIT). Interactive account configuration uses Inquirer
+use @earendil-works/pi-tui (MIT). Fenced code highlighting uses cli-highlight
+(ISC) when a language is specified. Interactive account configuration uses Inquirer
 (MIT). These npm dependencies retain their upstream notices.
 MIT License
 

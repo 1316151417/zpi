@@ -1,51 +1,55 @@
 # ZPI CLI 交互对照
 
-日常对话以 Claude Code 为参照，连接提供商和选择模型以 Pi 为参照。验收以用户实际看到的终端、按键后的焦点和发出的模型请求为准。例如 `/fast` 要改变请求的 service tier，`/技能名` 要把选中的 Skill 送进本轮请求。
+终端界面、编辑器、Markdown、工具、思考和选模以 Pi 为参照。Claude Code 提供斜杠命令的名称与习惯用法，执行范围由 zpi 内核决定。验收同时核对屏幕、按键后的焦点和实际发出的模型请求。例如 `/fast` 应改变请求的 service tier，`/技能名` 应把选中的 Skill 送进本轮请求。
 
-对照固定在本地 Claude Code 社区版本 `a90626dc` 和 Pi `e65b3b88`。核查包含命令注册、条件命令、启动参数、工具、默认键位和相应的界面组件。社区版本含有自己的扩展和内部门控，表中的命令数量不能当成 Anthropic 官方发行版的功能数量。[Claude 命令注册](https://github.com/claude-code-best/claude-code/blob/a90626dc1e349b3f053fd5b46d7ba8413799c699/src/commands.ts) · [Claude 键位表](https://github.com/claude-code-best/claude-code/blob/a90626dc1e349b3f053fd5b46d7ba8413799c699/src/keybindings/defaultBindings.ts) · [Pi 模型交互](https://github.com/1316151417/pi/blob/e65b3b88c08412bb8ffbd21fb5dc5756064a6e5a/packages/coding-agent/docs/models.md)
+Pi 的参考版本为 1.7.0（`2126569de`）。Claude 命令来源为社区版本 `a90626dc`，索引含其扩展和条件注册项。[Pi 消息组件](https://github.com/earendil-works/pi/blob/2126569de40d5595dd3f41f7af126001f04c1de0/packages/coding-agent/src/modes/interactive/components/assistant-message.ts) · [Pi 键位表](https://github.com/earendil-works/pi/blob/2126569de40d5595dd3f41f7af126001f04c1de0/packages/coding-agent/src/core/keybindings.ts) · [Claude 命令注册](https://github.com/claude-code-best/claude-code/blob/a90626dc1e349b3f053fd5b46d7ba8413799c699/src/commands.ts)
 
 ## 从启动到下一轮
 
 | 操作 | ZPI CLI 的实际行为 | 与参考的关系 |
 | --- | --- | --- |
-| 启动 | 暖色粗体 `ZPI`，低对比度路径，用户目录缩写为 `~`。输入框以 `❯` 起行。 | 保留文字品牌和弱化路径的层级。首页按产品要求省去欢迎语、吉祥物和常驻快捷键。 |
-| 查看当前设置 | 底栏显示 `provider/model`、已知且开启的推理档位、实际启用的加速。已选 Skill 和运行状态按需出现。 | 帮助放在 `?` 和 `/help`，模型选择器内才提示如何保存默认值。 |
-| 发送和阅读 | 用户输入使用整行底色和 `❯`，模型回答以 `●` 起行。多行、Markdown、终端缩放都有续行缩进，关闭颜色后仍能辨认发言人。 | 对照 Claude 的用户消息、回答和连续对话截图，历史回放继续使用两种消息样式。 |
-| 等待回答 | 收到思考事件时显示「思考中…」，收到结束事件后显示耗时。Ctrl+O 展开供应商返回的可见思考，也展开工具输出。回答结束后另列本轮用时。 | 计时来自本次运行。只有 reasoning token 用量或历史缺少时间时显示「已思考」。无依据时不补计时，签名、加密或遮盖内容始终不可见。 |
+| 启动 | 全屏工作区显示 ZPI 图形标识、版本、紧凑操作提示及发现的 Skill。输入框和状态栏固定在底部，Ctrl+O 收放启动详情。 | 按 Pi 的信息层次和终端截图核对。编辑器复用 pi-tui 的两条边框、零水平内边距和原生光标。 |
+| 查看当前设置 | 状态栏显示目录、Git 分支及会话名，下行显示可用的用量、上下文窗口、模型和推理或加速状态。编辑器用边框颜色区分推理档位。 | 通过 `?` 和 `/help` 打开帮助面板，Tab 切换快捷键与命令，Esc 关闭。命令页省去 Skill 明细。Pi 的 `/hotkeys` 可把同一组快捷键放入当前终端的滚动区。 |
+| 发送和阅读 | 用户输入占一块带底色的 Markdown。模型正文直接排版，连续正文使用相同左边距，工具和思考之间按可见内容留白。 | 实时回答与恢复后的历史使用同一消息组件。以 pi-tui 的 Markdown、光标、换行和宽度处理为准。 |
+| 阅读思考 | 供应商返回的可读推理或摘要默认展开为弱色斜体 Markdown。Ctrl+T 单独切换思考显示，CLI 保存该偏好。 | 遵循 Pi 的独立思考开关。请求只返回签名、加密数据、遮盖块或 token 用量时，界面保留实际可见的正文和工具。 |
 | 调用工具 | read、edit、write、bash 显示目标、状态和结果。Ctrl+O 展开输出及内核提供的修改差异。重试、压缩、中断和失败有独立反馈。 | 复用四个原生工具。Claude 的工具家族、逐文件 Git 差异浏览器和任务面板另列于下。 |
-| 输入命令或 Skill | 输入 `/` 同列公共 Skill、文件命令和内置命令。Tab 补全后可追加要求，`/<Skill 名> 要求` 直接调用。冲突时保留原有命令，并展示该 Skill 的可用拼写。 | 自定义资源在提交时重新读取。显式 Skill 也可用于 `-p`，终端整段粘贴中的斜杠正文按原文发送。续聊回放保留这版记录的原始输入，避免把整份 Skill 当作用户说的话。 |
+| 输入命令或 Skill | 输入 `/` 列出公共 Skill、文件命令和内置命令。候选命令显示用法，带参命令的空参数位给出提示。`/<Skill 名> 要求` 直接调用，完整名称行内高亮。通过 `/skills` 选择也会填回草稿。 | Pi 原生 Skill 拼写为 `/skill:name`。ZPI 保留用户指定的直接入口，重名时补全给出 `/$名称`。显式 Skill 支持 `-p`，续聊回放显示用户原始输入。 |
 | 引用资料 | `@` 补全当前目录文件或目录，图片路径使用现有的校验、转码及模型输入能力检查。 | Ctrl+V 通过 pi-tui 的系统剪贴板读取图片，在草稿中插入可删除的标记。发送时走同一套图片校验；终端主机取不到图片时可用 `@`。 |
 | 编辑与中断 | 中文及多行粘贴、换行、光标编辑、上下键历史、Ctrl+R 搜索最近输入。Esc 先关闭补全，再中断运行；Ctrl+C 可清空草稿，空输入 Ctrl+D 退出。 | Ctrl+R 搜索本次终端最多 100 条不同输入。打开选择器再取消，返回原草稿。 |
-| 续聊 | `-c` 续最近记录，`-r` 或 `/resume` 可搜索当前目录的会话，`-r <id>` 精确恢复。`/rename 名称` 用原生会话名称标记，`/clear` 开新草稿。 | 保持目录隔离。只选模型、看帮助或打开后退出均不增加会话。 |
+| 续聊 | `-c` 续最近记录，`-r` 或 `/resume` 搜索当前目录的会话，`-r <id>` 精确恢复。`/rename 名称` 支持在第一条消息前命名，`/clear` 开新草稿。 | 首次有效提交时登记会话和暂定名称。只选模型、命名或看帮助后退出均不增加会话。 |
 | 取走回答 | `/copy` 复制最近可见回答，`/copy 2` 复制倒数第二条，使用终端 OSC 52。普通 `-p` 向 stdout 写本轮可见结果。 | 终端决定是否接收剪贴板写入。纯文本管道不带屏幕符号、思考、进度或工具日志。 |
 
 ## 配置模型时按 Pi 操作
 
 | 用户想做什么 | 入口与结果 |
 | --- | --- |
-| 第一次连接 | `/login` 选提供商，或直接 `/login anthropic`。已知服务只询问所需的凭据；自定义网关另选协议和地址。模型目录自动发现，缺少目录的兼容服务可手填多个模型。 |
+| 第一次连接 | `/login` 选提供商，或直接 `/login anthropic`。自定义网关另选协议和地址。缺少目录时可手填多个模型，并为每个模型勾选网关实际支持的推理档位。 |
 | 看有哪些模型 | `zpi models` 每行一个 `provider/model`；`zpi --list-models writer` 筛选。普通登录和模型名均无需填写账户别名。 |
-| 改当前会话 | `/model` 或 Ctrl+L 打开可搜索列表，显示当前项和默认项。Enter 切换。`/model provider/model` 或唯一完整模型 ID 直接选中，关键词和重名 ID 打开搜索。Ctrl+P / Ctrl+Shift+P 前后切换。Alt+P 也可按 Claude 习惯打开列表。 |
+| 改当前会话 | `/model` 或 Ctrl+L 打开带搜索框的模型列表。行内展示模型 ID、不同于 ID 的名称和 `[提供商]`。方向键移动 `→`，`✓` 始终标记当前模型，`· default` 标记新会话默认值。Enter 切换，Ctrl+S 切换并设为默认。`/model provider/model` 或唯一完整模型 ID 可直接切换。 |
 | 设置新会话默认 | 在模型上按 Ctrl+S；也可执行 `zpi models --default provider/model`。首次登录按服务目录顺序取第一项；已有默认值保留。 |
 | 做单次调用 | `zpi-cli -m provider/model` 或 `--model provider/model`。只按首个斜杠拆分，可用 `team/org/writer` 这样的 ID。 |
 | 调推理或加速 | `/effort` 和 Shift+Tab 使用模型支持的档位，`--effort` 作用于本次调用。`/fast` 或 Alt+O 切换已声明的服务档位。 |
 | 管理第二组凭据 | `zpi auth login <provider> --account work` 可添加同提供商的其他连接，`auth list/switch/logout` 管理计费身份。续聊默认绑定原账户。普通单账户工作流只需知道提供商和模型。 |
 
-Pi 还支持常用模型范围（`/scoped-models`、`--models`）、模型目录在线刷新、llama.cpp 路由管理以及 JSON 覆盖提供商元数据。ZPI 当前在登录时发现目录，搜索和轮换当前各服务的可用模型，自定义地址和协议也走终端向导。模型协议、凭据储存和订阅授权由 ZPI 自己的接入决定。[Pi 模型选择器](https://github.com/1316151417/pi/blob/e65b3b88c08412bb8ffbd21fb5dc5756064a6e5a/packages/coding-agent/src/modes/interactive/components/model-selector.ts) · [ZPI 模型配置](models.md)
+Pi 还支持常用模型范围（`/scoped-models`、`--models`）、模型目录在线刷新、llama.cpp 路由管理以及 JSON 覆盖提供商元数据。ZPI 当前在登录时发现目录，搜索和轮换当前各服务的可用模型，自定义地址和协议也走终端向导。模型协议、凭据储存和订阅授权由 ZPI 自己的接入决定。[Pi 模型选择器](https://github.com/earendil-works/pi/blob/2126569de40d5595dd3f41f7af126001f04c1de0/packages/coding-agent/src/modes/interactive/components/model-selector.ts) · [ZPI 模型配置](models.md)
 
-## 仍能感知到的差异
+## Pi 页面验收
+
+在相同的 80 列、38 行窗口里，使用同一组 Skill 名称和一轮中文问答核对首屏。另在 92 列、45 行的实际终端向两个程序发送相同的可见思考、文件读取及 Markdown 回复，核对文字基线、消息底色、输入边框及最末两行。品牌取自仓库的 [ZPI 图标](../../icon.png)，终端色板按参考截图的深色主题校准。加载提示只展示当前环境真实发生的事件。Pi 的 `!` 和 `!!` 涉及独立的交互式 shell 会话模式；ZPI 的 bash 继续作为内核工具运行。
+
+## 与 Claude Code 的范围差异
 
 | 场景 | 当前边界或具体缺口 |
 | --- | --- |
-| 长对话阅读 | 可使用终端回滚和 Ctrl+O。Claude 还有专门的 transcript 浏览器、搜索、逐消息操作菜单，以及工具专用详情布局。ZPI 目前没有这些浏览控件。 |
-| 草稿和附件 | Ctrl+G 通过 VISUAL 或 EDITOR 编辑草稿，Ctrl+S 暂存或取回一条草稿，连同已选 Skill 和图片一起恢复。尚无跨进程草稿、跨会话输入索引，以及单独管理附件的面板。 |
+| 长对话阅读 | 在全屏会话区查看消息和工具详情。Claude 独立的 transcript 浏览器、逐消息操作和全文搜索超出当前目录短任务的范围。 |
+| 草稿和附件 | Ctrl+G 通过 VISUAL 或 EDITOR 编辑草稿，Ctrl+S 暂存或取回一条草稿及其图片。Skill 名直接保存在这段草稿文本中。 |
 | 搜索与恢复 | 当前目录内可按标题和 ID 查找会话。Claude 还可跨项目搜索、从某一条消息恢复、分支和回退工作区；后者需要相应的会话与文件生命周期。 |
 | 输出及脚本 | 普通管道只输出当轮结果。Claude 的完整 transcript 导出、结构化流、输入事件回显、预算和 SDK 服务模式均有额外契约。 |
-| 品牌与显示 | 使用 ZPI 自有文字品牌、中文反馈和终端配色。没有复刻 Claude 的品牌美术、随机动词、可定制状态栏、主题设置页或订阅营销信息。 |
+| 品牌与显示 | 使用 ZPI 图形标识、中文反馈及 Pi 风格的工作区。输入区仅显示编辑内容、当前状态和需要的参数提示。 |
 
 审批、权限模式、计划、MCP、workflow、多代理协同、后台调度、远程控制、worktree 管理，以及 `/commit`、`/review`、`/summary` 和同类代理指令属于已明确排除的能力。项目与长任务管理由 Desktop 承担。上述取舍与输入框、消息呈现、选模等日常交互的完成度分别验收。[产品原则](README.md) · [原生工具与会话边界](runtime.md)
 
-## 静态入口索引
+## Claude Code 静态入口索引
 
 命令按模块归组，涵盖注册表、条件模块及目录中留存的实现。模块名有时与公开命令名或别名不同，例如注册表单独将 `ultrareview` 接入评审。辅助模块和测试目录不计入。
 
@@ -88,7 +92,7 @@ Pi 还支持常用模型范围（`/scoped-models`、`--models`）、模型目录
 | 处理方式 | 参考源码标识 |
 | --- | --- |
 | 输入、补全、历史和通用选择采用共享编辑器或选择器 | `Autocomplete`、`Chat`、`FormField`、`Global`、`Help`、`HistorySearch`、`Select` |
-| 对应动作各有入口；详情开关、文件引用、终端回滚、底栏及 Pi 模型选择取代专用面板 | `Attachments`、`EffortPanel`、`Footer`、`ModelPicker`、`Scroll`、`Transcript` |
+| 使用文件引用、全屏会话区、工具展开、状态栏和 Pi 风格的模型选择器 | `Attachments`、`EffortPanel`、`Footer`、`ModelPicker`、`Scroll`、`Transcript` |
 | 参考版独有的屏幕或复杂流程；ZPI 没有相应菜单 | `Confirmation`、`DiffDialog`、`MessageActions`、`MessageSelector`、`Plugin`、`Settings`、`Tabs`、`Task`、`ThemePicker` |
 
 工具层逐类核对了文件读写、搜索、命令执行、Skill、Notebook、LSP、Web、交互提问、规划、任务/代理、worktree、MCP、工件和专属工具。ZPI CLI 暴露内核原有的 read、write、edit、bash，复用原生 Skill 资源。文件搜索可由 bash 执行，工具结果可展开；协议、权限、后台宿主和第三方专属工具均不会凭空注册。[Claude 工具注册](https://github.com/claude-code-best/claude-code/blob/a90626dc1e349b3f053fd5b46d7ba8413799c699/src/tools.ts) · [ZPI 原生会话](../../packages/coding-agent/src/core/sdk.ts)

@@ -6,6 +6,8 @@ import {
   providerApi,
   providerApis,
   providerBaseUrl,
+  providerPresets,
+  thinkingChoices,
   usesChatGPTAuth,
 } from "@zpi-dev/ai";
 import type { ProviderChatModelConfig } from "@zpi-dev/coding-agent";
@@ -14,6 +16,16 @@ import { type Service, validModelId } from "./store.ts";
 
 export function validName(value: string) {
   return /^[\p{L}\p{N}][\p{L}\p{N}._-]{0,63}$/u.test(value);
+}
+export function loginProviders(accounts: readonly Pick<Service, "provider">[]) {
+  const custom = new Set(accounts.map((account) => account.provider).filter(customAlias));
+  return [
+    { value: "openai", name: "OpenAI" },
+    { value: "anthropic", name: "Anthropic" },
+    ...providerPresets.filter((p) => p.family !== "openai").map((p) => ({ value: p.id, name: p.name })),
+    ...Array.from(custom, (value) => ({ value, name: value })),
+    { value: "custom", name: "自定义服务" },
+  ];
 }
 export function validEnvName(name: string) {
   return /^[a-zA-Z_][a-zA-Z_0-9]*$/.test(name);
@@ -96,7 +108,6 @@ export async function chooseEnabledModels(
     return response;
   };
   let candidates: DiscoveredModel[] = [];
-  let manual = false;
   try {
     const result = await fetchProviderModels({ ...service, apiKey: key }, observe);
     if (result.source === "catalog" && ![404, 405, 501].includes(status ?? 0))
@@ -116,33 +127,59 @@ export async function chooseEnabledModels(
         "ChatGPT 已登录，暂时无法获取订阅模型。请用 zpi auth login openai --method oauth 选择此账户重试模型发现。",
       );
     else if (customAlias(service.provider) && status !== undefined && [200, 404, 405, 501].includes(status))
-      manual = true;
+      candidates = await manualModels(service.api, previous, ui);
     else throw new Error("模型发现失败。请检查服务地址、凭据和网络。");
   }
-  if (!oauth && !manual && !candidates.length) throw new Error("此连接没有可启用的模型。");
-  if (manual) {
-    const picked = await ui.manualModels(previous);
-    candidates = picked.map((m) => {
-      if (
-        !validModelId(m.id) ||
-        !Number.isSafeInteger(m.contextWindow) ||
-        !Number.isSafeInteger(m.maxTokens) ||
-        !m.contextWindow ||
-        !m.maxTokens ||
-        m.maxTokens < 1 ||
-        m.maxTokens > m.contextWindow
-      )
-        throw new Error("请提供有效的模型 ID、上下文和输出上限。");
-      return {
-        id: m.id,
-        contextWindow: m.contextWindow,
-        maxTokens: m.maxTokens,
-        input: ["text"],
-        reasoning: false,
-      };
-    });
-  }
-  if ((manual && !candidates.length) || new Set(candidates.map((m) => m.id)).size !== candidates.length)
-    throw new Error("至少启用一个模型，ID 不可重复。");
+  if (!oauth && !candidates.length) throw new Error("此连接没有可启用的模型。");
+  if (new Set(candidates.map((m) => m.id)).size !== candidates.length) throw new Error("模型 ID 不可重复。");
   return candidates;
+}
+
+async function manualModels(api: ProviderApi, previous: DiscoveredModel[], ui: LoginInteraction) {
+  const efforts = thinkingChoices({
+    api,
+    reasoning: true,
+    compat: { supportsReasoningEffort: true },
+  });
+  const picked = await ui.manualModels(previous, efforts);
+  return picked.map((m) => {
+    if (
+      !validModelId(m.id) ||
+      !Number.isSafeInteger(m.contextWindow) ||
+      !Number.isSafeInteger(m.maxTokens) ||
+      m.maxTokens < 1 ||
+      m.maxTokens > m.contextWindow
+    )
+      throw new Error("请提供有效的模型 ID、上下文和输出上限。");
+    const existing = previous.find((model) => model.id === m.id);
+    const model: DiscoveredModel = {
+      input: ["text"],
+      reasoning: false,
+      ...existing,
+      id: m.id,
+      contextWindow: m.contextWindow,
+      maxTokens: m.maxTokens,
+    };
+    const selected = m.efforts;
+    if (!selected) return model;
+    if (selected.some((level) => !efforts.includes(level))) throw new Error("模型协议不支持所选推理档位。");
+    const reasoning = selected.length > 0;
+    return {
+      ...model,
+      reasoning,
+      compat:
+        api === "anthropic-messages" ? model.compat : { ...model.compat, supportsReasoningEffort: reasoning },
+      thinkingLevelMap: reasoning
+        ? Object.fromEntries(
+            efforts.map((level) => [
+              level,
+              selected.includes(level)
+                ? (model.thinkingLevelMap?.[level] ?? (level === "off" ? "none" : level))
+                : null,
+            ]),
+          )
+        : undefined,
+      defaultThinkingLevel: selected.find((level) => level === model.defaultThinkingLevel),
+    };
+  });
 }

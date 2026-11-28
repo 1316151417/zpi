@@ -20,6 +20,7 @@ import {
   emptyAssistant,
   getCurrentTools,
   type TranscriptContext,
+  thinkingChoices,
 } from "@zpi-dev/ai";
 import { ModelRuntime, SessionManager } from "@zpi-dev/coding-agent";
 import { afterEach, expect, it, vi } from "vitest";
@@ -43,6 +44,7 @@ async function fixture() {
   const accountsUsed: string[] = [];
   let active = "personal";
   const accounts = {
+    getEfforts: () => thinkingChoices(fakeConfig("")),
     selectModel: (explicit?: string, previous?: { accountId: string }) => {
       if (explicit && explicit !== "gateway/fake") throw new Error("Unknown test model");
       const accountId = previous?.accountId ?? active;
@@ -206,7 +208,7 @@ it("shows the draft model for an effort choice and reselects the current default
   const host = f.create();
   const [effort] = await host.getEfforts();
   await host.setEffort(effort);
-  expect(host.getSelection()).toEqual({ model: "gateway/fake", effort, fast: false });
+  expect(host.getSelection()).toMatchObject({ model: "gateway/fake", effort, fast: false });
   f.switchToWork();
   const select = vi.spyOn(f.accounts, "selectModel");
   await host.run("first turn");
@@ -269,7 +271,10 @@ it("keeps skills explicit and enforces command provenance, priority, argument bo
   const host = f.create({ ephemeral: true });
   const resources = new CliResources(f.cwd, f.homeDir);
   expect((await host.listCommands()).map((c) => c.name)).toEqual(["doc", "testing"]);
-  expect((await host.listSkills()).map((s) => s.name)).toEqual(["testing"]);
+  const help = await host.run("/help");
+  expect(help).toContain("/doc");
+  expect(help).toContain("/rename <会话名称>");
+  expect(help).not.toMatch(/\/testing|unit tests|SPECIAL SKILL BODY/);
   await host.run("hello");
   expect(JSON.stringify(f.contexts[0])).toContain("PROJECT INSTRUCTIONS");
   expect(JSON.stringify(f.contexts[0])).not.toContain("unit tests");
@@ -417,6 +422,7 @@ it("removes each ephemeral tool-output directory after both success and failure"
     const failed = f.create({
       ephemeral: true,
       accounts: {
+        ...f.accounts,
         selectModel() {
           const selected = f.accounts.selectModel();
           selected.runtime.clearProviders();
@@ -431,4 +437,54 @@ it("removes each ephemeral tool-output directory after both success and failure"
   } finally {
     vi.unstubAllEnvs();
   }
+});
+
+it("applies explicit speed and effort without submitting and preserves the choice when resumed", async () => {
+  const f = await fixture();
+  const selected = f.accounts.selectModel();
+  const accounts = {
+    getEfforts: () => thinkingChoices({ ...selected.model, compat: { supportsReasoningEffort: true } }),
+    selectModel: () => ({
+      ...selected,
+      model: {
+        ...selected.model,
+        compat: { ...selected.model.compat, supportsReasoningEffort: true },
+        serviceTiers: ["priority"],
+      },
+    }),
+  };
+  const host = f.create({ accounts });
+  const levels = await host.getEfforts();
+  const level = "high";
+  expect(levels).toContain(level);
+  await host.setEffort(level);
+  await expect(host.setEffort("typo")).rejects.toThrow(levels.join(", "));
+  expect(await host.toggleFast(true)).toBe(true);
+  expect(await host.toggleFast(true)).toBe(true);
+  expect(host.getSelection()).toMatchObject({ effort: level, fast: true });
+  expect(await host.listHistory()).toEqual([]);
+  expect(f.contexts).toHaveLength(0);
+
+  await host.run("create a session");
+  const [{ id }] = await host.listHistory();
+  expect(await host.toggleFast(false)).toBe(false);
+  const path = new DirectoryHistory(f.root, f.cwd).path(id);
+  const afterDisable = await readFile(path, "utf8");
+  expect(await host.toggleFast(false)).toBe(false);
+  expect(await readFile(path, "utf8")).toEqual(afterDisable);
+  await host.close();
+  const resumed = f.create({ accounts });
+  await resumed.resume(id);
+  expect(resumed.getSelection()).toMatchObject({ effort: level, fast: false });
+  expect(await resumed.toggleFast()).toBe(true);
+  expect(f.contexts).toHaveLength(1);
+});
+
+it("rejects fast mode for unsupported models before creating history or submitting", async () => {
+  const f = await fixture();
+  const host = f.create();
+  await expect(host.toggleFast(true)).rejects.toThrow("当前模型未提供加速档位");
+  expect(host.getSelection().fast).toBe(false);
+  expect(await host.listHistory()).toEqual([]);
+  expect(f.contexts).toHaveLength(0);
 });
